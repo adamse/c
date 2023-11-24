@@ -8,24 +8,65 @@ use tui_input::backend::crossterm::EventHandler;
 
 struct S {
     input: tui_input::Input,
-    output: Result<Vec<i64>, String>,
+    output: Res,
 }
 
 fn operator(op: &str) -> Option<fn(i64,i64) -> i64> {
     match op {
         "p" | "+" => Some(ops::Add::add),
         "m" | "*" => Some(ops::Mul::mul),
+        "d" => Some(ops::Div::div),
         _ => None,
     }
 }
 
-fn parse(inp: &str) -> Result<Vec<i64>, String> {
+#[derive(PartialEq, Eq, Clone, Copy, Default)]
+enum Format {
+    #[default]
+    Dec,
+    Hex
+}
+
+#[derive(Default)]
+struct Res {
+    stack: Vec<i64>,
+    err: Option<String>,
+    format: Format,
+}
+
+impl Res {
+    fn render(&self) -> String {
+        let mut out = "".to_owned();
+        if self.format == Format::Dec {
+            for &x in self.stack.iter() {
+                out.push_str(&format!("{} ", x));
+            }
+        } else {
+            for &x in self.stack.iter() {
+                out.push_str(&format!("{:#x} ", x));
+            }
+        }
+
+        out
+    }
+}
+
+
+fn parse(inp: &str) -> Res {
     let mut stack = vec![];
+    let mut err = None;
+    let mut format = Format::Dec;
 
     for x in inp.split_whitespace() {
         if !x.is_ascii() {
             // handle later
             continue;
+        }
+
+        if let Some(x) = x.strip_prefix("0x") &&
+            let Ok(num) = i64::from_str_radix(x, 16) {
+            stack.push(num);
+            format = Format::Hex;
         }
 
         if let Ok(num) = x.parse() {
@@ -42,8 +83,11 @@ fn parse(inp: &str) -> Result<Vec<i64>, String> {
         match head {
             // iota, ( n --- 1 .. n )
             "i" => {
-                let count = stack.pop().ok_or("")?;
-                stack.extend(1..=count);
+                if let Some(count) = stack.pop() {
+                    stack.extend(1..=count);
+                } else {
+                    err = Some("i needs a number".into());
+                }
                 continue;
             },
             // fold, /op, ( a b .. x --- a op b op .. op x )
@@ -52,10 +96,20 @@ fn parse(inp: &str) -> Result<Vec<i64>, String> {
                     let res = stack.iter().copied().reduce(op).unwrap();
                     stack.truncate(0);
                     stack.push(res);
+                } else {
+                    err = Some("/<op>".into())
                 }
                 continue;
 
             }
+            "." => {
+                match rest {
+                    "h" => { format = Format::Hex; },
+                    "d" => { format = Format::Dec; },
+                    _ => {},
+                }
+                continue;
+            },
             _ => {},
         }
 
@@ -64,20 +118,19 @@ fn parse(inp: &str) -> Result<Vec<i64>, String> {
             let Some(b) = stack.pop() {
 
             stack.push(op(a,b));
+
+            continue;
         }
 
+        err = Some(format!("couldn't parse '{x}'"));
+
     }
 
-    Ok(stack)
-}
-
-fn render(stack: &[i64]) -> String {
-    let mut out = "".to_owned();
-    for x in stack {
-        out.push_str(&format!("{} ", x));
+    Res {
+        stack,
+        err,
+        format,
     }
-
-    out
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -88,12 +141,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut terminal = Terminal::with_options(
         backend,
         TerminalOptions {
-            viewport: Viewport::Inline(2),
+            viewport: Viewport::Inline(3),
         })?;
 
     let state = S {
         input: Default::default(),
-        output: Ok(vec![]),
+        output: Default::default(),
     };
 
     run_app(&mut terminal, state)?;
@@ -114,14 +167,7 @@ fn run_app<B: Backend>(term: &mut Terminal<B>, mut s: S) -> Result<(), Box<dyn E
                     return Ok(())
                 } else if key.code == KeyCode::Enter {
                     term.insert_before(1, |buf| {
-                        Paragraph::new(match s.output {
-                            Ok(stack) => {
-                                render(&stack[..])
-                            },
-                            Err(err) => {
-                                err
-                            },
-                        }).render(buf.area, buf);
+                        Paragraph::new(s.output.render()).render(buf.area, buf);
                     })?;
                     s.input.reset();
                 } else {
@@ -144,24 +190,23 @@ fn run_app<B: Backend>(term: &mut Terminal<B>, mut s: S) -> Result<(), Box<dyn E
 fn ui(f: &mut Frame, s: &S) {
 
     let chunks = Layout::default()
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .constraints([Constraint::Max(1), Constraint::Max(1), Constraint::Max(1)])
         .split(f.size());
 
+    // error message
+    if let Some(ref err) = s.output.err {
+        let error = Paragraph::new(err.clone());
+        f.render_widget(error, chunks[0]);
+    }
+
     // current output
-    let output = Paragraph::new(match &s.output {
-        Ok(stack) => {
-            render(&stack[..])
-        },
-        Err(err) => {
-            err.clone()
-        },
-    });
-    f.render_widget(output, chunks[0]);
+    let output = Paragraph::new(s.output.render());
+    f.render_widget(output, chunks[1]);
 
     let input_chunks = Layout::default()
         .constraints([Constraint::Length(2), Constraint::Min(1)])
         .direction(Direction::Horizontal)
-        .split(chunks[1]);
+        .split(chunks[2]);
 
     // > prompt
     let prompt = Paragraph::new("> ");
