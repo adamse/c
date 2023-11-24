@@ -67,6 +67,7 @@ fn parse(inp: &str) -> Res {
             let Ok(num) = i64::from_str_radix(x, 16) {
             stack.push(num);
             format = Format::Hex;
+            continue;
         }
 
         if let Ok(num) = x.parse() {
