@@ -118,7 +118,7 @@ fn parse(inp: &str) -> Res {
             let Some(a) = stack.pop() &&
             let Some(b) = stack.pop() {
 
-            stack.push(op(a,b));
+            stack.push(op(b,a));
 
             continue;
         }
