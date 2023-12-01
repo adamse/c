@@ -135,6 +135,12 @@ fn parse(inp: &str) -> Res {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    let args = std::env::args().skip(1).collect::<Vec<_>>().join(" ");
+    if !args.is_empty() {
+        println!("{}", parse(&args).render());
+        return Ok(());
+    }
+
     crossterm::terminal::enable_raw_mode()?;
 
     let stdout = std::io::stdout();
