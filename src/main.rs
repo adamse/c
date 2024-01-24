@@ -6,11 +6,6 @@ use crossterm::event::{Event, KeyCode, KeyModifiers};
 use ratatui::{prelude::*, widgets::*};
 use tui_input::backend::crossterm::EventHandler;
 
-struct S {
-    input: tui_input::Input,
-    output: Res,
-}
-
 fn operator(op: &str) -> Option<fn(i64,i64) -> i64> {
     match op {
         "p" | "+" => Some(ops::Add::add),
@@ -21,7 +16,7 @@ fn operator(op: &str) -> Option<fn(i64,i64) -> i64> {
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Default)]
-enum Format {
+enum IntFormat {
     #[default]
     Dec,
     Hex
@@ -31,13 +26,13 @@ enum Format {
 struct Res {
     stack: Vec<i64>,
     err: Option<String>,
-    format: Format,
+    int_format: IntFormat,
 }
 
 impl Res {
     fn render(&self) -> String {
         let mut out = "".to_owned();
-        if self.format == Format::Dec {
+        if self.int_format == IntFormat::Dec {
             for &x in self.stack.iter() {
                 out.push_str(&format!("{} ", x));
             }
@@ -55,7 +50,7 @@ impl Res {
 fn parse(inp: &str) -> Res {
     let mut stack = vec![];
     let mut err = None;
-    let mut format = Format::Dec;
+    let mut int_format = IntFormat::Dec;
 
     for x in inp.split_whitespace() {
         if !x.is_ascii() {
@@ -66,7 +61,7 @@ fn parse(inp: &str) -> Res {
         if let Some(x) = x.strip_prefix("0x") &&
             let Ok(num) = i64::from_str_radix(x, 16) {
             stack.push(num);
-            format = Format::Hex;
+            int_format = IntFormat::Hex;
             continue;
         }
 
@@ -105,8 +100,8 @@ fn parse(inp: &str) -> Res {
             }
             "." => {
                 match rest {
-                    "h" => { format = Format::Hex; },
-                    "d" => { format = Format::Dec; },
+                    "h" => { int_format = IntFormat::Hex; },
+                    "d" => { int_format = IntFormat::Dec; },
                     _ => {},
                 }
                 continue;
@@ -130,8 +125,13 @@ fn parse(inp: &str) -> Res {
     Res {
         stack,
         err,
-        format,
+        int_format,
     }
+}
+
+struct S {
+    input: tui_input::Input,
+    output: Res,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
