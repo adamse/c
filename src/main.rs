@@ -11,6 +11,7 @@ fn operator(op: &str) -> Option<fn(i64,i64) -> i64> {
         "p" | "+" => Some(ops::Add::add),
         "m" | "*" => Some(ops::Mul::mul),
         "d" => Some(ops::Div::div),
+        "%" => Some(ops::Rem::rem),
         _ => None,
     }
 }
